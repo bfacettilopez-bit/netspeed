@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="theme-color" content="#07111f" />
+  <meta name="description" content="NetSpeed: prueba de velocidad de Internet con proveedor, servidor y detalles de conexión." />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" />
+  <link rel="stylesheet" href="styles.css" />
+  <title>NetSpeed</title>
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <div>
+        <div class="brand">Net<span>Speed</span></div>
+        <p>Prueba de velocidad y diagnóstico de red</p>
+      </div>
+      <button id="installBtn" class="ghost hidden" type="button">Instalar app</button>
+    </header>
+
+    <section class="network-card" aria-label="Información de la conexión">
+      <div class="provider-badge" id="providerBadge">ISP</div>
+      <div class="network-main">
+        <span class="eyebrow">Compañía</span>
+        <h1 id="providerName">Detectando proveedor…</h1>
+        <p id="providerLegal">Consultando razón social</p>
+      </div>
+      <div class="network-meta">
+        <div><span>IP pública</span><strong id="publicIp">—</strong></div>
+        <div><span>Ubicación de red</span><strong id="networkLocation">—</strong></div>
+      </div>
+    </section>
+
+    <section class="cards three">
+      <article class="mini-card">
+        <span class="eyebrow">Servidor</span>
+        <strong id="serverName">Cloudflare Speed Network</strong>
+        <small id="serverLocation">Buscando nodo más cercano…</small>
+      </article>
+      <article class="mini-card">
+        <span class="eyebrow">Conexión</span>
+        <strong id="connectionSummary">No identificada</strong>
+        <small id="connectionSource">Podés confirmarla abajo</small>
+      </article>
+      <article class="mini-card">
+        <span class="eyebrow">Estado</span>
+        <strong id="onlineStatus">En línea</strong>
+        <small id="browserEstimate">Sin estimación del navegador</small>
+      </article>
+    </section>
+
+    <section class="test-card">
+      <div class="speed-ring" id="speedRing">
+        <div class="speed-inner">
+          <span id="phaseLabel">LISTO</span>
+          <strong id="mainSpeed">0.00</strong>
+          <small>Mbps</small>
+        </div>
+      </div>
+      <button id="startBtn" class="primary" type="button">INICIAR PRUEBA</button>
+
+      <div class="metrics">
+        <div><span>Ping</span><strong id="ping">—</strong><small>ms</small></div>
+        <div><span>Jitter</span><strong id="jitter">—</strong><small>ms</small></div>
+        <div><span>Descarga</span><strong id="download">—</strong><small>Mbps</small></div>
+        <div><span>Subida</span><strong id="upload">—</strong><small>Mbps</small></div>
+      </div>
+    </section>
+
+    <section class="details-card">
+      <div class="section-title">
+        <div>
+          <span class="eyebrow">Tipo de acceso</span>
+          <h2>¿Cómo estás conectado?</h2>
+        </div>
+        <span id="confirmedBadge" class="pill hidden">Confirmado por vos</span>
+      </div>
+
+      <div class="selectors">
+        <label>
+          Categoría
+          <select id="accessCategory">
+            <option value="">Seleccionar…</option>
+            <option value="mobile">Red móvil</option>
+            <option value="wifi">Wi‑Fi / Internet fijo</option>
+            <option value="ethernet">Ethernet / cable de red</option>
+          </select>
+        </label>
+        <label>
+          Tecnología
+          <select id="accessTechnology" disabled>
+            <option value="">Primero seleccioná una categoría</option>
+          </select>
+        </label>
+      </div>
+
+      <p class="disclaimer">Los navegadores no siempre pueden distinguir 5G/4G/3G ni saber si un Wi‑Fi proviene de fibra, cable o ADSL. NetSpeed muestra lo detectado cuando está disponible y permite que confirmes el dato para evitar resultados engañosos.</p>
+    </section>
+
+    <footer>
+      <span>NetSpeed · Paraguay</span>
+      <span>Los nombres y marcas de operadores pertenecen a sus respectivos titulares.</span>
+    </footer>
+  </main>
+  <script src="app.js" defer></script>
+</body>
+</html>
