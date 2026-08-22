@@ -1,21 +1,19 @@
-# NetSpeed Paraguay
+# NetSpeed v2.0.0
 
-Web pública instalable como PWA para medir ping, jitter, descarga y subida.
+PWA para medir ping, jitter, descarga y subida, con datos de proveedor/red y confirmación manual del tipo de acceso.
 
-## Datos de red
-- Detecta IP, organización/ISP y ubicación aproximada mediante IP pública.
-- Mapea Tigo, Personal, Claro, VOX y COPACO a sus razones sociales verificadas.
-- Usa Cloudflare Speed Network para la prueba y muestra el nodo/colo cuando está disponible.
-- El tipo físico de acceso (5G/4G/3G, fibra, HFC, ADSL) no siempre es accesible desde el navegador; por eso se permite confirmarlo manualmente.
+## Cambios principales de v2.0
 
-## Publicar en Vercel
-Desde esta carpeta, con una cuenta de Vercel autenticada:
+- Separa **operador comercial** de **ASN/red pública** para evitar falsos positivos.
+- Ping calculado con varias muestras y mediana; jitter con variación entre muestras.
+- Descarga multiconexión durante varios segundos.
+- Subida multiconexión durante varios segundos.
+- La interfaz muestra correctamente cada fase y guarda descarga/subida por separado.
+- Mejor adaptación a iPhone.
+- Service Worker actualizado a `netspeed-v2.0.0` para facilitar futuras actualizaciones.
 
-    vercel --prod
+## Publicación
 
-También se puede arrastrar/importar este proyecto en Vercel o publicar como sitio estático en cualquier hosting HTTPS.
+El repositorio conectado a Vercel se despliega automáticamente al actualizar la rama `main`.
 
-## Instalar como app
-Una vez publicada por HTTPS:
-- Android/Chrome: usar “Instalar app”.
-- iPhone/Safari: Compartir > Añadir a pantalla de inicio.
+Leé `RELEASE_GUIDE.md` antes de publicar futuras versiones.

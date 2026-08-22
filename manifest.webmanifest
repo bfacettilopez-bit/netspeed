@@ -1,12 +1,12 @@
 {
-  "name": "NetSpeed Paraguay",
+  "name": "NetSpeed",
   "short_name": "NetSpeed",
-  "description": "Prueba de velocidad de Internet y diagnóstico de red.",
+  "description": "Prueba de velocidad y diagnóstico de red",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
-  "background_color": "#050a12",
+  "background_color": "#050b12",
   "theme_color": "#07111f",
-  "lang": "es-PY",
   "icons": [
     {"src":"/icons/icon-192.png","sizes":"192x192","type":"image/png","purpose":"any maskable"},
     {"src":"/icons/icon-512.png","sizes":"512x512","type":"image/png","purpose":"any maskable"}

@@ -2,109 +2,125 @@
 <html lang="es">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#07111f" />
-  <meta name="description" content="NetSpeed: prueba de velocidad de Internet con proveedor, servidor y detalles de conexión." />
-  <link rel="manifest" href="manifest.webmanifest" />
-  <link rel="icon" href="icons/icon.svg" type="image/svg+xml" />
-  <link rel="apple-touch-icon" href="icons/icon-192.png" />
-  <link rel="stylesheet" href="styles.css" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="NetSpeed" />
   <title>NetSpeed</title>
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="/icons/icon-192.png" />
+  <link rel="icon" href="/icons/icon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
-  <main class="shell">
+  <main class="app-shell">
     <header class="topbar">
       <div>
         <div class="brand">Net<span>Speed</span></div>
-        <p>Prueba de velocidad y diagnóstico de red</p>
+        <div class="tagline">Prueba de velocidad y diagnóstico de red</div>
       </div>
-      <button id="installBtn" class="ghost hidden" type="button">Instalar app</button>
+      <div class="version">v2.0.0</div>
     </header>
 
-    <section class="network-card" aria-label="Información de la conexión">
-      <div class="provider-badge" id="providerBadge">ISP</div>
-      <div class="network-main">
-        <span class="eyebrow">Compañía</span>
-        <h1 id="providerName">Detectando proveedor…</h1>
-        <p id="providerLegal">Consultando razón social</p>
+    <section class="card provider-card">
+      <div class="provider-icon">ISP</div>
+      <div class="provider-main">
+        <div class="eyebrow">OPERADOR / PROVEEDOR</div>
+        <h1 id="operatorName">Detectando…</h1>
+        <div id="operatorLegal" class="muted">Consultando red pública</div>
+        <div id="asnOrg" class="asn-line">ASN / red: —</div>
       </div>
-      <div class="network-meta">
+      <div class="provider-meta">
         <div><span>IP pública</span><strong id="publicIp">—</strong></div>
         <div><span>Ubicación de red</span><strong id="networkLocation">—</strong></div>
       </div>
     </section>
 
-    <section class="cards three">
-      <article class="mini-card">
-        <span class="eyebrow">Servidor</span>
-        <strong id="serverName">Cloudflare Speed Network</strong>
-        <small id="serverLocation">Buscando nodo más cercano…</small>
+    <section class="triple-grid">
+      <article class="card compact">
+        <div class="eyebrow">SERVIDOR</div>
+        <h2>Cloudflare Speed Network</h2>
+        <p id="serverLocation" class="muted">Buscando nodo…</p>
       </article>
-      <article class="mini-card">
-        <span class="eyebrow">Conexión</span>
-        <strong id="connectionSummary">No identificada</strong>
-        <small id="connectionSource">Podés confirmarla abajo</small>
+      <article class="card compact">
+        <div class="eyebrow">CONEXIÓN</div>
+        <h2 id="connectionLabel">No identificada</h2>
+        <p id="connectionSource" class="muted">Podés confirmarla abajo</p>
       </article>
-      <article class="mini-card">
-        <span class="eyebrow">Estado</span>
-        <strong id="onlineStatus">En línea</strong>
-        <small id="browserEstimate">Sin estimación del navegador</small>
+      <article class="card compact">
+        <div class="eyebrow">ESTADO</div>
+        <h2 id="onlineStatus">En línea</h2>
+        <p id="browserEstimate" class="muted">Sin estimación del navegador</p>
       </article>
     </section>
 
-    <section class="test-card">
-      <div class="speed-ring" id="speedRing">
-        <div class="speed-inner">
-          <span id="phaseLabel">LISTO</span>
-          <strong id="mainSpeed">0.00</strong>
-          <small>Mbps</small>
+    <section class="card test-card">
+      <div class="gauge" id="gauge">
+        <div class="gauge-content">
+          <div class="phase" id="phase">LISTO</div>
+          <div class="speed" id="mainSpeed">0.00</div>
+          <div class="unit">Mbps</div>
         </div>
       </div>
-      <button id="startBtn" class="primary" type="button">INICIAR PRUEBA</button>
 
-      <div class="metrics">
-        <div><span>Ping</span><strong id="ping">—</strong><small>ms</small></div>
-        <div><span>Jitter</span><strong id="jitter">—</strong><small>ms</small></div>
-        <div><span>Descarga</span><strong id="download">—</strong><small>Mbps</small></div>
-        <div><span>Subida</span><strong id="upload">—</strong><small>Mbps</small></div>
+      <button id="startBtn" class="primary-btn">INICIAR PRUEBA</button>
+      <div id="progressText" class="progress-text">Preparado para medir</div>
+
+      <div class="metrics-grid">
+        <div class="metric"><span>Ping</span><strong id="ping">—</strong><small>ms</small></div>
+        <div class="metric"><span>Jitter</span><strong id="jitter">—</strong><small>ms</small></div>
+        <div class="metric"><span>Descarga</span><strong id="download">—</strong><small>Mbps</small></div>
+        <div class="metric"><span>Subida</span><strong id="upload">—</strong><small>Mbps</small></div>
       </div>
     </section>
 
-    <section class="details-card">
+    <section class="card settings-card">
       <div class="section-title">
         <div>
-          <span class="eyebrow">Tipo de acceso</span>
-          <h2>¿Cómo estás conectado?</h2>
+          <div class="eyebrow">CONFIRMAR RED</div>
+          <h2>Datos que el navegador no puede saber con certeza</h2>
         </div>
-        <span id="confirmedBadge" class="pill hidden">Confirmado por vos</span>
       </div>
-
-      <div class="selectors">
+      <div class="form-grid">
         <label>
-          Categoría
-          <select id="accessCategory">
-            <option value="">Seleccionar…</option>
-            <option value="mobile">Red móvil</option>
-            <option value="wifi">Wi‑Fi / Internet fijo</option>
-            <option value="ethernet">Ethernet / cable de red</option>
+          Operador comercial
+          <select id="operatorSelect">
+            <option value="auto">Automático / no confirmar</option>
+            <option value="tigo">Tigo</option>
+            <option value="personal">Personal</option>
+            <option value="claro">Claro</option>
+            <option value="vox">VOX</option>
+            <option value="copaco">COPACO</option>
+            <option value="otro">Otro</option>
           </select>
         </label>
         <label>
-          Tecnología
-          <select id="accessTechnology" disabled>
-            <option value="">Primero seleccioná una categoría</option>
+          Tipo de acceso
+          <select id="connectionSelect">
+            <option value="auto">Automático / no confirmar</option>
+            <option value="mobile-5g">Red móvil · 5G</option>
+            <option value="mobile-4g">Red móvil · 4G LTE</option>
+            <option value="mobile-3g">Red móvil · 3G</option>
+            <option value="mobile-2g">Red móvil · 2G / EDGE</option>
+            <option value="fiber">Wi-Fi / fijo · Fibra óptica FTTH</option>
+            <option value="hfc">Wi-Fi / fijo · Cable / HFC</option>
+            <option value="dsl">Wi-Fi / fijo · ADSL / VDSL</option>
+            <option value="fixed-wireless">Wi-Fi / fijo · Inalámbrico fijo</option>
+            <option value="satellite">Wi-Fi / fijo · Satelital</option>
+            <option value="ethernet">Ethernet / LAN</option>
           </select>
         </label>
       </div>
-
-      <p class="disclaimer">Los navegadores no siempre pueden distinguir 5G/4G/3G ni saber si un Wi‑Fi proviene de fibra, cable o ADSL. NetSpeed muestra lo detectado cuando está disponible y permite que confirmes el dato para evitar resultados engañosos.</p>
+      <p class="fineprint">NetSpeed separa ahora el ASN/red pública del operador comercial para evitar confundir una red mayorista, tránsito o CGNAT con la compañía que te vende el servicio.</p>
     </section>
 
     <footer>
-      <span>NetSpeed · Paraguay</span>
-      <span>Los nombres y marcas de operadores pertenecen a sus respectivos titulares.</span>
+      <span>NetSpeed v2.0.0</span>
+      <span>·</span>
+      <span>Medición orientativa: el resultado puede variar por congestión, servidor, dispositivo y red.</span>
     </footer>
   </main>
-  <script src="app.js" defer></script>
+  <script src="/app.js" defer></script>
 </body>
 </html>

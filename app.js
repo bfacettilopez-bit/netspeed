@@ -1,225 +1,174 @@
 const $ = (id) => document.getElementById(id);
 
-const providers = [
-  { aliases: ['telecel','telefonica celular del paraguay','telefónica celular del paraguay','tigo paraguay','tigo'], brand: 'Tigo', legal: 'Telefónica Celular del Paraguay S.A.E.', badge: 'TIGO' },
-  { aliases: ['nucleo','núcleo','personal paraguay','personal'], brand: 'Personal', legal: 'Núcleo S.A.', badge: 'PERSONAL' },
-  { aliases: ['amx paraguay','claro paraguay','claro'], brand: 'Claro', legal: 'AMX Paraguay S.A.', badge: 'CLARO' },
-  { aliases: ['hola paraguay','vox paraguay','vox'], brand: 'VOX', legal: 'Hola Paraguay S.A.', badge: 'VOX' },
-  { aliases: ['copaco','compania paraguaya de comunicaciones','compañía paraguaya de comunicaciones'], brand: 'COPACO', legal: 'Compañía Paraguaya de Comunicaciones S.A.', badge: 'COPACO' }
-];
+const VERSION = '2.0.0';
+const CF_DOWN = 'https://speed.cloudflare.com/__down';
+const CF_UP = 'https://speed.cloudflare.com/__up';
+const CF_TRACE = 'https://www.cloudflare.com/cdn-cgi/trace';
+const IP_INFO = 'https://ipapi.co/json/';
 
-const coloMap = {
-  EZE: 'Buenos Aires, Argentina', GRU: 'São Paulo, Brasil', GIG: 'Río de Janeiro, Brasil',
-  SCL: 'Santiago, Chile', MVD: 'Montevideo, Uruguay', LIM: 'Lima, Perú', MIA: 'Miami, Estados Unidos',
-  DFW: 'Dallas, Estados Unidos', IAD: 'Ashburn, Estados Unidos', LAX: 'Los Ángeles, Estados Unidos'
+const operators = {
+  tigo: { name:'Tigo', legal:'Telefónica Celular del Paraguay S.A.E.' },
+  personal: { name:'Personal', legal:'Núcleo S.A.' },
+  claro: { name:'Claro', legal:'AMX Paraguay S.A.' },
+  vox: { name:'VOX', legal:'Hola Paraguay S.A.' },
+  copaco: { name:'COPACO', legal:'Compañía Paraguaya de Comunicaciones S.A.' }
 };
 
-const accessOptions = {
-  mobile: ['5G', '4G LTE', '3G', '2G / EDGE', 'Otra red móvil'],
-  wifi: ['Fibra óptica (FTTH)', 'Cable / HFC', 'ADSL / VDSL', 'Internet fijo inalámbrico', 'Internet satelital', 'Otro acceso fijo'],
-  ethernet: ['Fibra óptica (FTTH)', 'Cable / HFC', 'ADSL / VDSL', 'Red corporativa / Ethernet', 'Otro acceso fijo']
+const connectionLabels = {
+  'mobile-5g':'Red móvil · 5G','mobile-4g':'Red móvil · 4G LTE','mobile-3g':'Red móvil · 3G','mobile-2g':'Red móvil · 2G / EDGE',
+  fiber:'Wi-Fi / fijo · Fibra óptica FTTH',hfc:'Wi-Fi / fijo · Cable / HFC',dsl:'Wi-Fi / fijo · ADSL / VDSL',
+  'fixed-wireless':'Wi-Fi / fijo · Inalámbrico fijo',satellite:'Wi-Fi / fijo · Satelital',ethernet:'Ethernet / LAN'
 };
 
-function identifyProvider(org = '') {
-  const haystack = org.toLowerCase();
-  return providers.find(p => p.aliases.some(a => haystack.includes(a))) || null;
+const coloNames = {EZE:'Buenos Aires, Argentina',GRU:'São Paulo, Brasil',GIG:'Rio de Janeiro, Brasil',SCL:'Santiago, Chile',MVD:'Montevideo, Uruguay',LIM:'Lima, Perú',MIA:'Miami, Estados Unidos'};
+
+function median(values){const a=[...values].sort((x,y)=>x-y);const m=Math.floor(a.length/2);return a.length%2?a[m]:(a[m-1]+a[m])/2}
+function mean(values){return values.reduce((a,b)=>a+b,0)/Math.max(values.length,1)}
+function round2(n){return Number.isFinite(n)?n.toFixed(2):'—'}
+function sleep(ms){return new Promise(r=>setTimeout(r,ms))}
+function cacheBust(){return `r=${Date.now()}-${Math.random()}`}
+
+function setPhase(name,speed=0,progress=0){
+  $('phase').textContent=name;
+  $('mainSpeed').textContent=round2(speed);
+  const deg=Math.max(15,Math.min(345,15+progress*330));
+  $('gauge').style.background=`conic-gradient(var(--cyan) 0deg,var(--violet) ${deg}deg,#18314a ${deg}deg 360deg)`;
+}
+function setProgress(text){$('progressText').textContent=text}
+function setActiveMetric(id){document.querySelectorAll('.metric').forEach(x=>x.classList.remove('active'));if(id)$(id)?.closest('.metric')?.classList.add('active')}
+
+function inferKnownOperator(org=''){
+  const s=org.toLowerCase();
+  if(s.includes('telefonica celular del paraguay')||s.includes('tigo')) return 'tigo';
+  if(s.includes('nucleo')||s.includes('personal paraguay')) return 'personal';
+  if(s.includes('amx paraguay')||s.includes('claro paraguay')) return 'claro';
+  if(s.includes('hola paraguay')||s.includes('vox')) return 'vox';
+  if(s.includes('compania paraguaya de comunicaciones')||s.includes('copaco')) return 'copaco';
+  return null;
 }
 
-function setProvider(data) {
-  const match = identifyProvider(`${data.org || ''} ${data.asn || ''}`);
-  $('publicIp').textContent = data.ip || '—';
-  $('networkLocation').textContent = [data.city, data.country_name || data.country].filter(Boolean).join(', ') || '—';
-  if (match) {
-    $('providerName').textContent = match.brand;
-    $('providerLegal').textContent = match.legal;
-    $('providerBadge').textContent = match.badge;
+function renderOperatorFromSelection(){
+  const selected=$('operatorSelect').value;
+  if(selected==='auto') return detectNetworkIdentity();
+  if(operators[selected]){
+    $('operatorName').textContent=operators[selected].name;
+    $('operatorLegal').textContent=operators[selected].legal;
+    $('operatorLegal').dataset.manual='1';
   } else {
-    $('providerName').textContent = data.org || 'Proveedor no identificado';
-    $('providerLegal').textContent = data.org ? 'Razón social no asociada en NetSpeed' : 'No disponible';
-    $('providerBadge').textContent = 'ISP';
+    $('operatorName').textContent='Otro operador';
+    $('operatorLegal').textContent='Confirmado manualmente';
+    $('operatorLegal').dataset.manual='1';
+  }
+  localStorage.setItem('netspeed.operator',selected);
+}
+
+async function detectNetworkIdentity(){
+  try{
+    const res=await fetch(`${IP_INFO}?${cacheBust()}`,{cache:'no-store'});
+    if(!res.ok) throw new Error('IP lookup failed');
+    const d=await res.json();
+    const org=d.org||d.asn||'Red no identificada';
+    $('publicIp').textContent=d.ip||'—';
+    $('networkLocation').textContent=[d.city,d.country_name].filter(Boolean).join(', ')||'—';
+    $('asnOrg').textContent=`ASN / red: ${org}`;
+    const match=inferKnownOperator(org);
+    if(match){$('operatorName').textContent=operators[match].name;$('operatorLegal').textContent=operators[match].legal}
+    else {$('operatorName').textContent='Operador no confirmado';$('operatorLegal').textContent='La IP pertenece a: '+org}
+  }catch(e){
+    $('operatorName').textContent='Operador no confirmado';$('operatorLegal').textContent='No se pudo consultar la red pública';$('asnOrg').textContent='ASN / red: —';
   }
 }
 
-async function detectNetwork() {
-  try {
-    const [ipRes, traceRes] = await Promise.allSettled([
-      fetch('https://ipapi.co/json/', { cache: 'no-store' }).then(r => r.ok ? r.json() : Promise.reject()),
-      fetch('https://speed.cloudflare.com/cdn-cgi/trace', { cache: 'no-store' }).then(r => r.ok ? r.text() : Promise.reject())
-    ]);
-    if (ipRes.status === 'fulfilled') setProvider(ipRes.value);
-    else {
-      $('providerName').textContent = 'Proveedor no detectado';
-      $('providerLegal').textContent = 'La consulta de IP no estuvo disponible';
-    }
-    if (traceRes.status === 'fulfilled') {
-      const trace = Object.fromEntries(traceRes.value.trim().split('\n').map(line => line.split('=')));
-      const colo = trace.colo || '';
-      $('serverLocation').textContent = colo ? `${coloMap[colo] || colo} · nodo ${colo}` : 'Nodo automático de Cloudflare';
-      if ($('publicIp').textContent === '—' && trace.ip) $('publicIp').textContent = trace.ip;
-    } else {
-      $('serverLocation').textContent = 'Nodo automático de Cloudflare';
-    }
-  } catch {
-    $('providerName').textContent = 'Proveedor no detectado';
-    $('providerLegal').textContent = 'No disponible';
+async function detectCloudflareColo(){
+  try{
+    const r=await fetch(`${CF_TRACE}?${cacheBust()}`,{cache:'no-store'});const t=await r.text();
+    const kv=Object.fromEntries(t.trim().split('\n').map(line=>line.split('=')));
+    const colo=kv.colo||'—';$('serverLocation').textContent=`${coloNames[colo]||'Nodo Cloudflare'} · nodo ${colo}`;
+  }catch{$('serverLocation').textContent='Nodo Cloudflare · ubicación no disponible'}
+}
+
+function detectBrowserConnection(){
+  $('onlineStatus').textContent=navigator.onLine?'En línea':'Sin conexión';
+  const c=navigator.connection||navigator.mozConnection||navigator.webkitConnection;
+  if(!c){$('browserEstimate').textContent='Sin estimación del navegador';return}
+  const parts=[];if(c.effectiveType)parts.push(`perfil ${c.effectiveType}`);if(c.downlink)parts.push(`≈ ${c.downlink} Mbps`);if(c.rtt)parts.push(`RTT ≈ ${c.rtt} ms`);
+  $('browserEstimate').textContent=parts.length?parts.join(' · '):'Sin estimación del navegador';
+}
+
+async function pingOnce(){
+  const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),3500);const t0=performance.now();
+  try{const r=await fetch(`${CF_DOWN}?bytes=0&${cacheBust()}`,{cache:'no-store',signal:controller.signal});if(!r.ok)throw new Error();await r.arrayBuffer();return performance.now()-t0}
+  finally{clearTimeout(timer)}
+}
+
+async function measureLatency(){
+  setPhase('PING',0,.06);setActiveMetric('ping');setProgress('Midiendo latencia y estabilidad…');
+  const values=[];
+  for(let i=0;i<9;i++){
+    try{const ms=await pingOnce();values.push(ms);setProgress(`Ping ${i+1}/9 · ${ms.toFixed(0)} ms`)}catch{}
+    await sleep(80);
+  }
+  if(values.length<3) throw new Error('No se pudo medir el ping');
+  const usable=values.slice(1);const p=median(usable);const diffs=[];for(let i=1;i<usable.length;i++)diffs.push(Math.abs(usable[i]-usable[i-1]));
+  const j=mean(diffs);$('ping').textContent=p.toFixed(0);$('jitter').textContent=j.toFixed(1);return{ping:p,jitter:j}
+}
+
+async function downloadWorker(endAt,onBytes){
+  while(performance.now()<endAt){
+    const controller=new AbortController();const remaining=Math.max(700,endAt-performance.now()+300);const timer=setTimeout(()=>controller.abort(),remaining);
+    try{
+      const r=await fetch(`${CF_DOWN}?bytes=5000000&${cacheBust()}`,{cache:'no-store',signal:controller.signal});if(!r.ok)continue;
+      if(r.body?.getReader){const reader=r.body.getReader();while(true){const {done,value}=await reader.read();if(done)break;if(value)onBytes(value.byteLength);if(performance.now()>=endAt){controller.abort();break}}}
+      else {const b=await r.arrayBuffer();onBytes(b.byteLength)}
+    }catch(e){}finally{clearTimeout(timer)}
   }
 }
 
-function detectBrowserConnection() {
-  const c = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
-  if (!c) return;
-  const pieces = [];
-  if (c.effectiveType) pieces.push(`perfil ${c.effectiveType.toUpperCase()}`);
-  if (Number.isFinite(c.downlink)) pieces.push(`≈ ${c.downlink} Mbps`);
-  if (Number.isFinite(c.rtt)) pieces.push(`RTT ≈ ${c.rtt} ms`);
-  if (pieces.length) $('browserEstimate').textContent = `Estimación: ${pieces.join(' · ')}`;
+async function measureDownload(durationMs=8000,streams=4){
+  setActiveMetric('download');setPhase('DESCARGA',0,.12);setProgress('Preparando conexiones de descarga…');
+  let bytes=0;const start=performance.now();const endAt=start+durationMs;const add=n=>{bytes+=n};
+  const ui=setInterval(()=>{const elapsed=(performance.now()-start)/1000;const mbps=(bytes*8)/Math.max(elapsed,.1)/1e6;const progress=Math.min(1,(performance.now()-start)/durationMs);setPhase('DESCARGA',mbps,.12+.42*progress);$('download').textContent=round2(mbps);setProgress(`Descarga multiconexión · ${Math.round(progress*100)}%`)},180);
+  await Promise.all(Array.from({length:streams},()=>downloadWorker(endAt,add)));clearInterval(ui);
+  const seconds=(performance.now()-start)/1000;const mbps=(bytes*8)/seconds/1e6;$('download').textContent=round2(mbps);setPhase('DESCARGA',mbps,.54);return mbps;
 }
 
-function updateOnlineState() {
-  $('onlineStatus').textContent = navigator.onLine ? 'En línea' : 'Sin conexión';
-}
-window.addEventListener('online', updateOnlineState);
-window.addEventListener('offline', updateOnlineState);
-
-const category = $('accessCategory');
-const technology = $('accessTechnology');
-function loadSavedAccess() {
-  const saved = JSON.parse(localStorage.getItem('netspeed-access') || 'null');
-  if (!saved) return;
-  category.value = saved.category;
-  refreshTechnology(saved.technology);
-  applyAccessSummary(saved.category, saved.technology);
-}
-function refreshTechnology(selected = '') {
-  const values = accessOptions[category.value] || [];
-  technology.innerHTML = values.length ? '<option value="">Seleccionar…</option>' : '<option value="">Primero seleccioná una categoría</option>';
-  values.forEach(v => {
-    const o = document.createElement('option'); o.value = v; o.textContent = v; technology.appendChild(o);
-  });
-  technology.disabled = !values.length;
-  if (selected) technology.value = selected;
-}
-function applyAccessSummary(cat, tech) {
-  if (!cat || !tech) return;
-  const prefix = cat === 'mobile' ? 'Red móvil' : cat === 'wifi' ? 'Wi‑Fi' : 'Ethernet';
-  $('connectionSummary').textContent = `${prefix} · ${tech}`;
-  $('connectionSource').textContent = 'Dato confirmado manualmente';
-  $('confirmedBadge').classList.remove('hidden');
-}
-category.addEventListener('change', () => {
-  refreshTechnology();
-  $('confirmedBadge').classList.add('hidden');
-  $('connectionSummary').textContent = category.options[category.selectedIndex]?.text || 'No identificada';
-  $('connectionSource').textContent = 'Elegí la tecnología para confirmar';
-});
-technology.addEventListener('change', () => {
-  if (!category.value || !technology.value) return;
-  localStorage.setItem('netspeed-access', JSON.stringify({ category: category.value, technology: technology.value }));
-  applyAccessSummary(category.value, technology.value);
-});
-
-const PING_URL = 'https://speed.cloudflare.com/__down?bytes=0';
-const DOWNLOAD_BYTES = 20_000_000;
-const DOWNLOAD_URL = `https://speed.cloudflare.com/__down?bytes=${DOWNLOAD_BYTES}`;
-const UPLOAD_URL = 'https://speed.cloudflare.com/__up';
-
-function setPhase(label) { $('phaseLabel').textContent = label; }
-function setSpeed(value) {
-  const n = Math.max(0, Number(value) || 0);
-  $('mainSpeed').textContent = n.toFixed(2);
-  const deg = Math.min(330, 30 + Math.log10(n + 1) * 110);
-  $('speedRing').style.background = `conic-gradient(var(--accent) 0deg,var(--accent2) ${deg}deg,#1a3047 ${deg}deg 360deg)`;
-}
-
-async function pingTest(samples = 7) {
-  const times = [];
-  for (let i = 0; i < samples; i++) {
-    const start = performance.now();
-    const res = await fetch(`${PING_URL}&r=${Math.random()}`, { cache: 'no-store' });
-    if (!res.ok) throw new Error('Ping failed');
-    await res.arrayBuffer();
-    times.push(performance.now() - start);
+async function uploadWorker(endAt,payload,onBytes){
+  while(performance.now()<endAt){
+    const controller=new AbortController();const remaining=Math.max(900,endAt-performance.now()+400);const timer=setTimeout(()=>controller.abort(),remaining);
+    try{const r=await fetch(`${CF_UP}?${cacheBust()}`,{method:'POST',body:payload,cache:'no-store',signal:controller.signal});if(r.ok)onBytes(payload.size)}catch(e){}finally{clearTimeout(timer)}
   }
-  const avg = times.reduce((a,b) => a+b, 0) / times.length;
-  const variance = times.reduce((sum, t) => sum + Math.pow(t - avg, 2), 0) / times.length;
-  return { ping: avg, jitter: Math.sqrt(variance) };
 }
 
-async function downloadTest() {
-  const start = performance.now();
-  const res = await fetch(`${DOWNLOAD_URL}&r=${Math.random()}`, { cache: 'no-store' });
-  if (!res.ok) throw new Error('Download failed');
-  const reader = res.body?.getReader();
-  let total = 0;
-  if (reader) {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      total += value.byteLength;
-      const sec = (performance.now() - start) / 1000;
-      if (sec > .2) setSpeed((total * 8) / sec / 1_000_000);
-    }
-  } else {
-    const blob = await res.blob(); total = blob.size;
-  }
-  const seconds = (performance.now() - start) / 1000;
-  return (total * 8) / seconds / 1_000_000;
+async function measureUpload(durationMs=8000,streams=3){
+  setActiveMetric('upload');setPhase('SUBIDA',0,.58);setProgress('Preparando conexiones de subida…');
+  const payload=new Blob([new Uint8Array(1000000)]);let bytes=0;const start=performance.now();const endAt=start+durationMs;const add=n=>{bytes+=n};
+  const ui=setInterval(()=>{const elapsed=(performance.now()-start)/1000;const mbps=(bytes*8)/Math.max(elapsed,.1)/1e6;const progress=Math.min(1,(performance.now()-start)/durationMs);setPhase('SUBIDA',mbps,.58+.4*progress);$('upload').textContent=round2(mbps);setProgress(`Subida multiconexión · ${Math.round(progress*100)}%`)},180);
+  await Promise.all(Array.from({length:streams},()=>uploadWorker(endAt,payload,add)));clearInterval(ui);
+  const seconds=(performance.now()-start)/1000;const mbps=(bytes*8)/seconds/1e6;$('upload').textContent=round2(mbps);setPhase('SUBIDA',mbps,.98);return mbps;
 }
 
-async function uploadTest() {
-  const size = 6_000_000;
-  const payload = new Uint8Array(size);
-  const start = performance.now();
-  const res = await fetch(UPLOAD_URL, { method: 'POST', body: payload, cache: 'no-store' });
-  if (!res.ok) throw new Error('Upload failed');
-  const seconds = (performance.now() - start) / 1000;
-  return (size * 8) / seconds / 1_000_000;
+async function runTest(){
+  $('startBtn').disabled=true;['ping','jitter','download','upload'].forEach(id=>$(id).textContent='—');setPhase('INICIANDO',0,.02);
+  try{await measureLatency();await sleep(250);await measureDownload();await sleep(350);await measureUpload();setPhase('COMPLETO',Number($('download').textContent)||0,1);setProgress('Prueba completada · descarga y subida guardadas por separado');setActiveMetric(null)}
+  catch(e){console.error(e);setPhase('ERROR',0,.05);setProgress('No se pudo completar la prueba. Revisá la conexión e intentá nuevamente.');setActiveMetric(null)}
+  finally{$('startBtn').disabled=false}
 }
 
-$('startBtn').addEventListener('click', async () => {
-  const btn = $('startBtn');
-  btn.disabled = true;
-  ['ping','jitter','download','upload'].forEach(id => $(id).textContent = '—');
-  setSpeed(0);
-  try {
-    setPhase('PING');
-    const p = await pingTest();
-    $('ping').textContent = p.ping.toFixed(0);
-    $('jitter').textContent = p.jitter.toFixed(1);
+function applySavedSettings(){
+  const op=localStorage.getItem('netspeed.operator');if(op&&$('operatorSelect').querySelector(`option[value="${op}"]`))$('operatorSelect').value=op;
+  const conn=localStorage.getItem('netspeed.connection');if(conn&&$('connectionSelect').querySelector(`option[value="${conn}"]`))$('connectionSelect').value=conn;
+  if(op&&op!=='auto')renderOperatorFromSelection();
+  if(conn&&conn!=='auto'){$('connectionLabel').textContent=connectionLabels[conn]||'Confirmada manualmente';$('connectionSource').textContent='Dato confirmado manualmente'}
+}
 
-    setPhase('DESCARGA');
-    const down = await downloadTest();
-    $('download').textContent = down.toFixed(2);
-    setSpeed(down);
+$('startBtn').addEventListener('click',runTest);
+$('operatorSelect').addEventListener('change',()=>{const v=$('operatorSelect').value;localStorage.setItem('netspeed.operator',v);renderOperatorFromSelection()});
+$('connectionSelect').addEventListener('change',()=>{const v=$('connectionSelect').value;localStorage.setItem('netspeed.connection',v);if(v==='auto'){$('connectionLabel').textContent='No identificada';$('connectionSource').textContent='Podés confirmarla abajo'}else{$('connectionLabel').textContent=connectionLabels[v];$('connectionSource').textContent='Dato confirmado manualmente'}});
+window.addEventListener('online',detectBrowserConnection);window.addEventListener('offline',detectBrowserConnection);
 
-    setPhase('SUBIDA');
-    const up = await uploadTest();
-    $('upload').textContent = up.toFixed(2);
-    setSpeed(up);
-    setPhase('COMPLETO');
-  } catch (e) {
-    console.error(e);
-    setPhase('ERROR');
-    alert('No se pudo completar la prueba. Revisá la conexión e intentá nuevamente.');
-  } finally {
-    btn.disabled = false;
-  }
-});
-
-let deferredInstallPrompt = null;
-window.addEventListener('beforeinstallprompt', (e) => {
-  e.preventDefault(); deferredInstallPrompt = e; $('installBtn').classList.remove('hidden');
-});
-$('installBtn').addEventListener('click', async () => {
-  if (!deferredInstallPrompt) return;
-  deferredInstallPrompt.prompt();
-  await deferredInstallPrompt.userChoice;
-  deferredInstallPrompt = null; $('installBtn').classList.add('hidden');
-});
-
-if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(console.error));
-
-updateOnlineState();
-detectBrowserConnection();
-loadSavedAccess();
-detectNetwork();
+(async function init(){
+  detectBrowserConnection();applySavedSettings();
+  if($('operatorSelect').value==='auto')await detectNetworkIdentity();
+  await detectCloudflareColo();
+  if('serviceWorker' in navigator){navigator.serviceWorker.register('/sw.js').catch(()=>{})}
+})();
