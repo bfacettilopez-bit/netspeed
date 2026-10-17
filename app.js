@@ -1,174 +1,43 @@
-const $ = (id) => document.getElementById(id);
-
-const VERSION = '2.0.0';
-const CF_DOWN = 'https://speed.cloudflare.com/__down';
-const CF_UP = 'https://speed.cloudflare.com/__up';
-const CF_TRACE = 'https://www.cloudflare.com/cdn-cgi/trace';
-const IP_INFO = 'https://ipapi.co/json/';
-
-const operators = {
-  tigo: { name:'Tigo', legal:'Telefónica Celular del Paraguay S.A.E.' },
-  personal: { name:'Personal', legal:'Núcleo S.A.' },
-  claro: { name:'Claro', legal:'AMX Paraguay S.A.' },
-  vox: { name:'VOX', legal:'Hola Paraguay S.A.' },
-  copaco: { name:'COPACO', legal:'Compañía Paraguaya de Comunicaciones S.A.' }
+const $=id=>document.getElementById(id);
+const storage={get:(k,d)=>{try{return JSON.parse(localStorage.getItem(k))??d}catch{return d}},set:(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch{}}};
+const state={history:storage.get('ns3-history',[]),settings:storage.get('ns3-settings',{theme:'auto',language:'es-PY',motion:'auto',glass:true,bubbles:true,dataSize:'small'}),network:{},operators:[],activeTest:false,abort:null,latest:null};
+const translations={
+'es-PY':{name:'Español (Paraguay)',home:'Inicio',operators:'Operadores',history:'Historial',tools:'Herramientas',settings:'Ajustes',start:'Iniciar prueba',download:'Descarga',upload:'Subida',ready:'LISTO',testing:'PROBANDO',finished:'COMPLETADO',error:'ERROR',stop:'Detener',hero:'Tu conexión, en otra dimensión.',desc:'Velocidad, redes y diagnósticos en un solo lugar.'},
+'gn-PY':{name:'Avañe’ẽ (Guaraní)',home:'Ñepyrũ',operators:'Operadorkuéra',history:'Tembiasakue',tools:'Tembiporukuéra',settings:'Ñemboheko',start:'Eñepyrũ pe ñeha’ã',download:'Ñemboguejy',upload:'Ñemondo',ready:'OĨMA',testing:'OÑEHA’Ã',finished:'OPA',error:'JEJAVY',stop:'Ejoko',hero:'Ne ñanduti, ambue hendáicha.',desc:'Pya’ekue ha ñanduti rehegua marandu peteĩ hendápe.'},
+'jopara-PY':{name:'Jopara (Paraguay)',home:'Inicio',operators:'Operadorkuéra',history:'Historial',tools:'Herramientas',settings:'Ajustes',start:'¡Eñepyrũ el test!',download:'Descarga',upload:'Subida',ready:'OĨMA',testing:'Oñemedi hína',finished:'¡Opáma!',error:'Error',stop:'Ejoko',hero:'Tu conexión, ambue nivel-pe.',desc:'Medí tu velocidad ha eikuaa tu red.'},
+'en':{name:'English',home:'Home',operators:'Operators',history:'History',tools:'Tools',settings:'Settings',start:'Start test',download:'Download',upload:'Upload',ready:'READY',testing:'TESTING',finished:'COMPLETE',error:'ERROR',stop:'Stop',hero:'Your connection, another dimension.',desc:'Speed, networks and diagnostics in one place.'},
+'pt-BR':{name:'Português (Brasil)',home:'Início',operators:'Operadoras',history:'Histórico',tools:'Ferramentas',settings:'Configurações',start:'Iniciar teste',download:'Download',upload:'Upload',ready:'PRONTO',testing:'TESTANDO',finished:'CONCLUÍDO',error:'ERRO',stop:'Parar',hero:'Sua conexão em outra dimensão.',desc:'Velocidade, redes e diagnósticos em um só lugar.'},
+'fr':{name:'Français',home:'Accueil',operators:'Opérateurs',history:'Historique',tools:'Outils',settings:'Paramètres',start:'Lancer le test',download:'Téléchargement',upload:'Envoi',ready:'PRÊT',testing:'TEST',finished:'TERMINÉ',error:'ERREUR',stop:'Arrêter',hero:'Votre connexion, une autre dimension.',desc:'Débit, réseaux et diagnostics au même endroit.'}
 };
-
-const connectionLabels = {
-  'mobile-5g':'Red móvil · 5G','mobile-4g':'Red móvil · 4G LTE','mobile-3g':'Red móvil · 3G','mobile-2g':'Red móvil · 2G / EDGE',
-  fiber:'Wi-Fi / fijo · Fibra óptica FTTH',hfc:'Wi-Fi / fijo · Cable / HFC',dsl:'Wi-Fi / fijo · ADSL / VDSL',
-  'fixed-wireless':'Wi-Fi / fijo · Inalámbrico fijo',satellite:'Wi-Fi / fijo · Satelital',ethernet:'Ethernet / LAN'
-};
-
-const coloNames = {EZE:'Buenos Aires, Argentina',GRU:'São Paulo, Brasil',GIG:'Rio de Janeiro, Brasil',SCL:'Santiago, Chile',MVD:'Montevideo, Uruguay',LIM:'Lima, Perú',MIA:'Miami, Estados Unidos'};
-
-function median(values){const a=[...values].sort((x,y)=>x-y);const m=Math.floor(a.length/2);return a.length%2?a[m]:(a[m-1]+a[m])/2}
-function mean(values){return values.reduce((a,b)=>a+b,0)/Math.max(values.length,1)}
-function round2(n){return Number.isFinite(n)?n.toFixed(2):'—'}
-function sleep(ms){return new Promise(r=>setTimeout(r,ms))}
-function cacheBust(){return `r=${Date.now()}-${Math.random()}`}
-
-function setPhase(name,speed=0,progress=0){
-  $('phase').textContent=name;
-  $('mainSpeed').textContent=round2(speed);
-  const deg=Math.max(15,Math.min(345,15+progress*330));
-  $('gauge').style.background=`conic-gradient(var(--cyan) 0deg,var(--violet) ${deg}deg,#18314a ${deg}deg 360deg)`;
-}
-function setProgress(text){$('progressText').textContent=text}
-function setActiveMetric(id){document.querySelectorAll('.metric').forEach(x=>x.classList.remove('active'));if(id)$(id)?.closest('.metric')?.classList.add('active')}
-
-function inferKnownOperator(org=''){
-  const s=org.toLowerCase();
-  if(s.includes('telefonica celular del paraguay')||s.includes('tigo')) return 'tigo';
-  if(s.includes('nucleo')||s.includes('personal paraguay')) return 'personal';
-  if(s.includes('amx paraguay')||s.includes('claro paraguay')) return 'claro';
-  if(s.includes('hola paraguay')||s.includes('vox')) return 'vox';
-  if(s.includes('compania paraguaya de comunicaciones')||s.includes('copaco')) return 'copaco';
-  return null;
-}
-
-function renderOperatorFromSelection(){
-  const selected=$('operatorSelect').value;
-  if(selected==='auto') return detectNetworkIdentity();
-  if(operators[selected]){
-    $('operatorName').textContent=operators[selected].name;
-    $('operatorLegal').textContent=operators[selected].legal;
-    $('operatorLegal').dataset.manual='1';
-  } else {
-    $('operatorName').textContent='Otro operador';
-    $('operatorLegal').textContent='Confirmado manualmente';
-    $('operatorLegal').dataset.manual='1';
-  }
-  localStorage.setItem('netspeed.operator',selected);
-}
-
-async function detectNetworkIdentity(){
-  try{
-    const res=await fetch(`${IP_INFO}?${cacheBust()}`,{cache:'no-store'});
-    if(!res.ok) throw new Error('IP lookup failed');
-    const d=await res.json();
-    const org=d.org||d.asn||'Red no identificada';
-    $('publicIp').textContent=d.ip||'—';
-    $('networkLocation').textContent=[d.city,d.country_name].filter(Boolean).join(', ')||'—';
-    $('asnOrg').textContent=`ASN / red: ${org}`;
-    const match=inferKnownOperator(org);
-    if(match){$('operatorName').textContent=operators[match].name;$('operatorLegal').textContent=operators[match].legal}
-    else {$('operatorName').textContent='Operador no confirmado';$('operatorLegal').textContent='La IP pertenece a: '+org}
-  }catch(e){
-    $('operatorName').textContent='Operador no confirmado';$('operatorLegal').textContent='No se pudo consultar la red pública';$('asnOrg').textContent='ASN / red: —';
-  }
-}
-
-async function detectCloudflareColo(){
-  try{
-    const r=await fetch(`${CF_TRACE}?${cacheBust()}`,{cache:'no-store'});const t=await r.text();
-    const kv=Object.fromEntries(t.trim().split('\n').map(line=>line.split('=')));
-    const colo=kv.colo||'—';$('serverLocation').textContent=`${coloNames[colo]||'Nodo Cloudflare'} · nodo ${colo}`;
-  }catch{$('serverLocation').textContent='Nodo Cloudflare · ubicación no disponible'}
-}
-
-function detectBrowserConnection(){
-  $('onlineStatus').textContent=navigator.onLine?'En línea':'Sin conexión';
-  const c=navigator.connection||navigator.mozConnection||navigator.webkitConnection;
-  if(!c){$('browserEstimate').textContent='Sin estimación del navegador';return}
-  const parts=[];if(c.effectiveType)parts.push(`perfil ${c.effectiveType}`);if(c.downlink)parts.push(`≈ ${c.downlink} Mbps`);if(c.rtt)parts.push(`RTT ≈ ${c.rtt} ms`);
-  $('browserEstimate').textContent=parts.length?parts.join(' · '):'Sin estimación del navegador';
-}
-
-async function pingOnce(){
-  const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),3500);const t0=performance.now();
-  try{const r=await fetch(`${CF_DOWN}?bytes=0&${cacheBust()}`,{cache:'no-store',signal:controller.signal});if(!r.ok)throw new Error();await r.arrayBuffer();return performance.now()-t0}
-  finally{clearTimeout(timer)}
-}
-
-async function measureLatency(){
-  setPhase('PING',0,.06);setActiveMetric('ping');setProgress('Midiendo latencia y estabilidad…');
-  const values=[];
-  for(let i=0;i<9;i++){
-    try{const ms=await pingOnce();values.push(ms);setProgress(`Ping ${i+1}/9 · ${ms.toFixed(0)} ms`)}catch{}
-    await sleep(80);
-  }
-  if(values.length<3) throw new Error('No se pudo medir el ping');
-  const usable=values.slice(1);const p=median(usable);const diffs=[];for(let i=1;i<usable.length;i++)diffs.push(Math.abs(usable[i]-usable[i-1]));
-  const j=mean(diffs);$('ping').textContent=p.toFixed(0);$('jitter').textContent=j.toFixed(1);return{ping:p,jitter:j}
-}
-
-async function downloadWorker(endAt,onBytes){
-  while(performance.now()<endAt){
-    const controller=new AbortController();const remaining=Math.max(700,endAt-performance.now()+300);const timer=setTimeout(()=>controller.abort(),remaining);
-    try{
-      const r=await fetch(`${CF_DOWN}?bytes=5000000&${cacheBust()}`,{cache:'no-store',signal:controller.signal});if(!r.ok)continue;
-      if(r.body?.getReader){const reader=r.body.getReader();while(true){const {done,value}=await reader.read();if(done)break;if(value)onBytes(value.byteLength);if(performance.now()>=endAt){controller.abort();break}}}
-      else {const b=await r.arrayBuffer();onBytes(b.byteLength)}
-    }catch(e){}finally{clearTimeout(timer)}
-  }
-}
-
-async function measureDownload(durationMs=8000,streams=4){
-  setActiveMetric('download');setPhase('DESCARGA',0,.12);setProgress('Preparando conexiones de descarga…');
-  let bytes=0;const start=performance.now();const endAt=start+durationMs;const add=n=>{bytes+=n};
-  const ui=setInterval(()=>{const elapsed=(performance.now()-start)/1000;const mbps=(bytes*8)/Math.max(elapsed,.1)/1e6;const progress=Math.min(1,(performance.now()-start)/durationMs);setPhase('DESCARGA',mbps,.12+.42*progress);$('download').textContent=round2(mbps);setProgress(`Descarga multiconexión · ${Math.round(progress*100)}%`)},180);
-  await Promise.all(Array.from({length:streams},()=>downloadWorker(endAt,add)));clearInterval(ui);
-  const seconds=(performance.now()-start)/1000;const mbps=(bytes*8)/seconds/1e6;$('download').textContent=round2(mbps);setPhase('DESCARGA',mbps,.54);return mbps;
-}
-
-async function uploadWorker(endAt,payload,onBytes){
-  while(performance.now()<endAt){
-    const controller=new AbortController();const remaining=Math.max(900,endAt-performance.now()+400);const timer=setTimeout(()=>controller.abort(),remaining);
-    try{const r=await fetch(`${CF_UP}?${cacheBust()}`,{method:'POST',body:payload,cache:'no-store',signal:controller.signal});if(r.ok)onBytes(payload.size)}catch(e){}finally{clearTimeout(timer)}
-  }
-}
-
-async function measureUpload(durationMs=8000,streams=3){
-  setActiveMetric('upload');setPhase('SUBIDA',0,.58);setProgress('Preparando conexiones de subida…');
-  const payload=new Blob([new Uint8Array(1000000)]);let bytes=0;const start=performance.now();const endAt=start+durationMs;const add=n=>{bytes+=n};
-  const ui=setInterval(()=>{const elapsed=(performance.now()-start)/1000;const mbps=(bytes*8)/Math.max(elapsed,.1)/1e6;const progress=Math.min(1,(performance.now()-start)/durationMs);setPhase('SUBIDA',mbps,.58+.4*progress);$('upload').textContent=round2(mbps);setProgress(`Subida multiconexión · ${Math.round(progress*100)}%`)},180);
-  await Promise.all(Array.from({length:streams},()=>uploadWorker(endAt,payload,add)));clearInterval(ui);
-  const seconds=(performance.now()-start)/1000;const mbps=(bytes*8)/seconds/1e6;$('upload').textContent=round2(mbps);setPhase('SUBIDA',mbps,.98);return mbps;
-}
-
-async function runTest(){
-  $('startBtn').disabled=true;['ping','jitter','download','upload'].forEach(id=>$(id).textContent='—');setPhase('INICIANDO',0,.02);
-  try{await measureLatency();await sleep(250);await measureDownload();await sleep(350);await measureUpload();setPhase('COMPLETO',Number($('download').textContent)||0,1);setProgress('Prueba completada · descarga y subida guardadas por separado');setActiveMetric(null)}
-  catch(e){console.error(e);setPhase('ERROR',0,.05);setProgress('No se pudo completar la prueba. Revisá la conexión e intentá nuevamente.');setActiveMetric(null)}
-  finally{$('startBtn').disabled=false}
-}
-
-function applySavedSettings(){
-  const op=localStorage.getItem('netspeed.operator');if(op&&$('operatorSelect').querySelector(`option[value="${op}"]`))$('operatorSelect').value=op;
-  const conn=localStorage.getItem('netspeed.connection');if(conn&&$('connectionSelect').querySelector(`option[value="${conn}"]`))$('connectionSelect').value=conn;
-  if(op&&op!=='auto')renderOperatorFromSelection();
-  if(conn&&conn!=='auto'){$('connectionLabel').textContent=connectionLabels[conn]||'Confirmada manualmente';$('connectionSource').textContent='Dato confirmado manualmente'}
-}
-
-$('startBtn').addEventListener('click',runTest);
-$('operatorSelect').addEventListener('change',()=>{const v=$('operatorSelect').value;localStorage.setItem('netspeed.operator',v);renderOperatorFromSelection()});
-$('connectionSelect').addEventListener('change',()=>{const v=$('connectionSelect').value;localStorage.setItem('netspeed.connection',v);if(v==='auto'){$('connectionLabel').textContent='No identificada';$('connectionSource').textContent='Podés confirmarla abajo'}else{$('connectionLabel').textContent=connectionLabels[v];$('connectionSource').textContent='Dato confirmado manualmente'}});
-window.addEventListener('online',detectBrowserConnection);window.addEventListener('offline',detectBrowserConnection);
-
-(async function init(){
-  detectBrowserConnection();applySavedSettings();
-  if($('operatorSelect').value==='auto')await detectNetworkIdentity();
-  await detectCloudflareColo();
-  if('serviceWorker' in navigator){navigator.serviceWorker.register('/sw.js').catch(()=>{})}
-})();
+const futureLanguages=['es-ES|Español (España)','es-AR|Español (Argentina)','es-MX|Español (México)','en-GB|English (UK)','pt-PT|Português (Portugal)','de|Deutsch','it|Italiano','ca|Català','eu|Euskara','gl|Galego','nl|Nederlands','sv|Svenska','da|Dansk','fi|Suomi','pl|Polski','cs|Čeština','el|Ελληνικά','ru|Русский','uk|Українська','tr|Türkçe','ar|العربية','he|עברית','fa|فارسی','hi|हिन्दी','bn|বাংলা','ur|اردو','ta|தமிழ்','th|ไทย','vi|Tiếng Việt','id|Bahasa Indonesia','ms|Bahasa Melayu','fil|Filipino','zh-CN|简体中文','zh-TW|繁體中文','ja|日本語','ko|한국어','sw|Kiswahili','am|አማርኛ','zu|isiZulu','af|Afrikaans','eo|Esperanto'];
+function t(k){return (translations[state.settings.language]||translations['es-PY'])[k]||translations['es-PY'][k]||k}
+function renderLanguageList(){const q=$('languageSearch').value.toLocaleLowerCase();const select=$('languageSelect');const current=state.settings.language;select.innerHTML='';Object.entries(translations).filter(([c,v])=>(c+' '+v.name).toLocaleLowerCase().includes(q)).forEach(([code,v])=>{const opt=new Option(v.name+' · disponible',code);select.add(opt)});if([...select.options].some(o=>o.value===current))select.value=current;$('languageNote').textContent=`${Object.keys(translations).length} traducciones iniciales disponibles. ${futureLanguages.length} idiomas/variantes adicionales planificados: ${futureLanguages.map(s=>s.split('|')[1]).join(', ')}. No se ofrecen como traducciones completas todavía. Guaraní y Jopara requieren revisión lingüística.`}
+function applySettings(){const s=state.settings;let theme=s.theme;if(theme==='auto')theme=matchMedia('(prefers-color-scheme: light)').matches?'light':'dark';document.body.dataset.theme=theme;document.body.classList.toggle('no-glass',!s.glass);document.body.classList.toggle('no-bubbles',!s.bubbles);document.body.classList.toggle('reduce-motion',s.motion==='reduced'||(s.motion==='auto'&&matchMedia('(prefers-reduced-motion: reduce)').matches));document.documentElement.lang=s.language.split('-')[0]==='jopara'?'es':s.language.split('-')[0];document.documentElement.dir=['ar','he','fa','ur'].includes(document.documentElement.lang)?'rtl':'ltr';document.querySelectorAll('[data-i18n]').forEach(e=>e.textContent=t(e.dataset.i18n));$('heroTitle').textContent=t('hero');$('heroDesc').textContent=t('desc');$('downloadLabel').textContent=t('download');$('uploadLabel').textContent=t('upload');$('startLabel').textContent=t('start');if(!state.activeTest)$('phase').textContent=t('ready');['theme','language','motion','dataSize'].forEach(k=>{const el=$(k+'Select');if(el)el.value=s[k]});$('glassToggle').checked=s.glass;$('backgroundToggle').checked=s.bubbles;renderLanguageList();storage.set('ns3-settings',s)}
+function showTab(id){document.querySelectorAll('.page').forEach(e=>e.classList.toggle('active',e.id===id));document.querySelectorAll('.tabs button').forEach(e=>e.classList.toggle('active',e.dataset.tab===id));if(id==='history')renderHistory();window.scrollTo({top:0,behavior:document.body.classList.contains('reduce-motion')?'instant':'smooth'})}
+document.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>showTab(b.dataset.tab));document.querySelectorAll('[data-goto]').forEach(b=>b.onclick=()=>showTab(b.dataset.goto));$('themeQuick').onclick=()=>{state.settings.theme=state.settings.theme==='dark'?'light':state.settings.theme==='light'?'auto':'dark';applySettings()};$('languageQuick').onclick=()=>showTab('settings');['theme','motion','dataSize'].forEach(k=>$(k+'Select').onchange=e=>{state.settings[k]=e.target.value;applySettings()});$('languageSelect').onchange=e=>{state.settings.language=e.target.value;applySettings()};$('languageSearch').oninput=renderLanguageList;$('glassToggle').onchange=e=>{state.settings.glass=e.target.checked;applySettings()};$('backgroundToggle').onchange=e=>{state.settings.bubbles=e.target.checked;applySettings()};matchMedia('(prefers-color-scheme: light)').addEventListener?.('change',applySettings);matchMedia('(prefers-reduced-motion: reduce)').addEventListener?.('change',applySettings);
+const fmt=(n,d=1)=>Number.isFinite(n)?n.toFixed(d):'—';
+function updateOnline(){const online=navigator.onLine;$('onlinePill').textContent=online?'● Online':'● Offline';$('connectivity').textContent=online?'Conectado (según navegador)':'Sin conexión';return online}window.addEventListener('online',updateOnline);window.addEventListener('offline',updateOnline);
+async function networkInfo(){if(!navigator.onLine){$('ip').textContent='Sin conexión';return}try{const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),7000);const res=await fetch('https://speed.cloudflare.com/meta',{signal:controller.signal,cache:'no-store'});clearTimeout(timer);if(!res.ok)throw Error('Servicio no disponible');const data=await res.json();state.network={ip:data.clientIp||'',asn:data.asn||'',org:data.asOrganization||'',country:data.country||'',city:data.city||''};$('ip').textContent=data.clientIp||'No disponible';$('asn').textContent=data.asn?'AS'+data.asn:'No disponible';$('org').textContent=data.asOrganization||'Organización desconocida';$('country').textContent=[data.country,data.city].filter(Boolean).join(' · ')||'No disponible';$('ipSource').textContent='Cloudflare Speed Network';}catch(e){$('ip').textContent='No disponible';$('ipSource').textContent='No se pudo consultar Cloudflare';$('asn').textContent='—';$('org').textContent='Sin datos';$('country').textContent='—'}}$('refreshNetwork').onclick=networkInfo;
+let selectedTests=new Set();function renderHistory(){const box=$('historyList');box.replaceChildren();if(!state.history.length){box.textContent='Todavía no hay pruebas guardadas.';$('comparison').textContent='';return}state.history.forEach((r,i)=>{const div=document.createElement('div');div.className='history-item';const check=document.createElement('input');check.type='checkbox';check.checked=selectedTests.has(r.id);check.setAttribute('aria-label','Seleccionar prueba '+(i+1));check.onchange=()=>{if(check.checked){if(selectedTests.size>=2){check.checked=false;return}selectedTests.add(r.id)}else selectedTests.delete(r.id);renderComparison()};const body=document.createElement('div');const title=document.createElement('b');title.textContent=`↓ ${fmt(r.down)} Mbps · ↑ ${fmt(r.up)} Mbps`;const small=document.createElement('small');small.textContent=`${new Date(r.time).toLocaleString()} · ${r.ping==null?'Ping no disponible':fmt(r.ping)+' ms'} · ${r.connection||'Conexión no especificada'}`;body.append(title,small);div.append(check,body);box.append(div)});renderComparison()}
+function renderComparison(){const chosen=state.history.filter(r=>selectedTests.has(r.id));const el=$('comparison');el.replaceChildren();if(chosen.length!==2){el.textContent='Seleccioná dos pruebas para compararlas.';return}const table=document.createElement('table');const head=document.createElement('tr');['Métrica','Prueba A','Prueba B'].forEach(x=>{const th=document.createElement('th');th.textContent=x;head.append(th)});table.append(head);[['Descarga','down',' Mbps'],['Subida','up',' Mbps'],['Ping','ping',' ms'],['Jitter','jitter',' ms']].forEach(([name,key,unit])=>{const tr=document.createElement('tr');[name,...chosen.map(r=>r[key]==null?'—':fmt(r[key])+unit)].forEach(x=>{const td=document.createElement('td');td.textContent=x;tr.append(td)});table.append(tr)});el.append(table)}
+function saveResult(r){state.history.unshift(r);state.history=state.history.slice(0,200);storage.set('ns3-history',state.history);state.latest=r;renderHistory()}
+function downloadFile(filename,content,type){const blob=new Blob([content],{type});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=filename;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)}
+$('exportJSON').onclick=()=>downloadFile('netspeed-history.json',JSON.stringify(state.history,null,2),'application/json');$('exportCSV').onclick=()=>{const keys=['time','down','up','ping','jitter','connection','asn'];const csv=[keys.join(','),...state.history.map(r=>keys.map(k=>JSON.stringify(r[k]??'')).join(','))].join('\r\n');downloadFile('netspeed-history.csv',csv,'text/csv;charset=utf-8')};$('clearHistory').onclick=()=>{if(confirm('¿Borrar todo el historial local?')){state.history=[];selectedTests.clear();storage.set('ns3-history',[]);renderHistory()}};$('deleteData').onclick=()=>{if(confirm('¿Eliminar historial y preferencias locales?')){localStorage.removeItem('ns3-history');localStorage.removeItem('ns3-settings');location.reload()}};
+$('shareResult').onclick=async()=>{const r=state.latest||state.history[0];if(!r){alert('Realizá primero una prueba.');return}const msg=`NETSPEED 3.0 🌐\nDescarga: ${fmt(r.down)} Mbps\nSubida: ${fmt(r.up)} Mbps\nPing: ${r.ping==null?'N/D':fmt(r.ping)+' ms'}\n${new Date(r.time).toLocaleString()}`;if(navigator.share){try{await navigator.share({title:'NETSPEED',text:msg})}catch{}}else{try{await navigator.clipboard.writeText(msg);alert('Resultado copiado.')}catch{alert(msg)}}};
+$('suggestOperator').onclick=async()=>{const text='Sugerencia NETSPEED\nNombre comercial:\nRazón social:\nPaís:\nSitio oficial:\nASN (si se conoce):\nFuentes públicas:';try{await navigator.clipboard.writeText(text);alert('Plantilla copiada.')}catch{alert(text)}};
+async function loadOperators(){try{const res=await fetch('/data/operators.json');if(!res.ok)throw Error();state.operators=await res.json();const countries=[...new Set(state.operators.map(x=>x.country))].sort();countries.forEach(c=>$('countryFilter').add(new Option(c,c)));renderOperators()}catch{$('operatorList').textContent='No se pudo cargar el catálogo.'}}
+function renderOperators(){const q=$('operatorSearch').value.toLocaleLowerCase();const country=$('countryFilter').value;const type=$('typeFilter').value;const matches=state.operators.filter(o=>(country==='all'||o.country===country)&&(type==='all'||o.type===type)&&[o.name,o.legal,o.country,...o.asns.map(n=>'AS'+n)].join(' ').toLocaleLowerCase().includes(q));$('catalogCount').textContent=`${matches.length} de ${state.operators.length} fichas iniciales · No es una lista mundial completa.`;const list=$('operatorList');list.replaceChildren();matches.forEach(o=>{const d=document.createElement('details');d.className='operator';const s=document.createElement('summary');const logo=document.createElement('div');logo.className='logo';logo.textContent=o.name.slice(0,2).toUpperCase();const info=document.createElement('div');info.className='info';const name=document.createElement('b');name.textContent=o.name;const sub=document.createElement('small');sub.textContent=o.country+' · '+o.technologies.join(', ');info.append(name,sub);const arrow=document.createElement('span');arrow.textContent='⌄';s.append(logo,info,arrow);const details=document.createElement('div');details.className='details';[['Razón social',o.legal],['ASN asociados',o.asns.length?o.asns.map(n=>'AS'+n).join(', '):'Sin verificar'],['Conexiones',o.technologies.join(', ')],['Nota',o.status]].forEach(([k,v])=>{const p=document.createElement('p');const strong=document.createElement('strong');strong.textContent=k+': ';p.append(strong,document.createTextNode(v));details.append(p)});if(o.website){const a=document.createElement('a');a.href=o.website;a.target='_blank';a.rel='noopener noreferrer';a.textContent='Visitar sitio web ↗';details.append(a)}d.append(s,details);list.append(d)})}
+['operatorSearch','countryFilter','typeFilter'].forEach(id=>$(id).addEventListener(id==='operatorSearch'?'input':'change',renderOperators));
+const tech=[['Fibra óptica','FTTH, GPON, XGS-PON: acceso fijo mediante fibra.'],['Móvil','2G, 3G, 4G LTE, 5G NSA/SA: dependen de red y dispositivo.'],['Wi-Fi','Wi-Fi 4, 5, 6, 6E, 7: conexión local inalámbrica.'],['Cable y cobre','ADSL, VDSL, HFC/DOCSIS y Ethernet.'],['Satélite','LEO, MEO y GEO: diferentes órbitas y latencias.'],['Empresarial','MPLS, SD-WAN, VPN, enlaces dedicados y tránsito IP.']];tech.forEach(([title,desc])=>{const d=document.createElement('details');d.className='operator';const s=document.createElement('summary');s.textContent=title+' ▾';const p=document.createElement('p');p.textContent=desc;d.append(s,p);$('techList').append(d)});
+$('browserName').textContent=navigator.userAgentData?.brands?.[0]?.brand||'Navegador web';$('browserInfo').textContent=navigator.platform||'Plataforma no disponible';$('httpsStatus').textContent=isSecureContext?'HTTPS / seguro':'Contexto no seguro';$('checkConnectivity').onclick=updateOnline;
+async function measureHttpLatency(count=4){const times=[];for(let i=0;i<count;i++){const start=performance.now();try{const res=await fetch('https://speed.cloudflare.com/__down?bytes=0&n='+Math.random(),{cache:'no-store',signal:AbortSignal.timeout(5000)});if(!res.ok)throw Error();await res.arrayBuffer();times.push(performance.now()-start)}catch{}}return times}
+$('checkLatency').onclick=async()=>{$('httpLatency').textContent='Midiendo…';const times=await measureHttpLatency();$('httpLatency').textContent=times.length?fmt(times.reduce((a,b)=>a+b,0)/times.length,0)+' ms':'No disponible'};
+function calculate(){const size=Number($('fileSize').value),speed=Number($('estimateSpeed').value);if(size<=0||speed<=0){$('estimateResult').textContent='Ingresá valores mayores que cero.';return}const secs=size*8000/speed;const hours=Math.floor(secs/3600),mins=Math.floor(secs%3600/60),s=Math.round(secs%60);$('estimateResult').textContent=`≈ ${hours?hours+' h ':''}${mins?mins+' min ':''}${s} s`}['fileSize','estimateSpeed'].forEach(id=>$(id).oninput=calculate);calculate();
+const sizes={small:2_000_000,medium:8_000_000,large:20_000_000};function phase(v,msg){$('phase').textContent=v;$('testStatus').textContent=msg}
+function setSpeed(v){$('liveSpeed').textContent=Number.isFinite(v)?fmt(v):'—'}
+function average(a){return a.reduce((x,y)=>x+y,0)/a.length}
+async function testDownload(bytes,signal){const start=performance.now();let total=0;const concurrency=2;await Promise.all(Array.from({length:concurrency},async()=>{const response=await fetch(`https://speed.cloudflare.com/__down?bytes=${bytes}&r=${Math.random()}`,{cache:'no-store',signal});if(!response.ok)throw Error('Servidor de descarga no disponible');if(response.body?.getReader){const reader=response.body.getReader();while(true){const {done,value}=await reader.read();if(done)break;total+=value.byteLength;const secs=(performance.now()-start)/1000;if(secs>0)setSpeed(total*8/secs/1e6)}}else{const data=await response.arrayBuffer();total+=data.byteLength}}));const duration=(performance.now()-start)/1000;return total*8/duration/1e6}
+async function testUpload(bytes,signal){const payload=new Uint8Array(bytes);const start=performance.now();const response=await fetch('https://speed.cloudflare.com/__up',{method:'POST',body:payload,cache:'no-store',signal,headers:{'Content-Type':'application/octet-stream'}});if(!response.ok)throw Error('Servidor de subida no disponible');await response.arrayBuffer();return bytes*8/((performance.now()-start)/1000)/1e6}
+$('stopTest').onclick=()=>state.abort?.abort();$('startTest').onclick=async()=>{if(state.activeTest)return;if(!navigator.onLine){alert('No hay conexión de red.');return}state.activeTest=true;const abort=new AbortController();state.abort=abort;$('startTest').disabled=true;$('stopTest').disabled=false;const bytes=sizes[state.settings.dataSize]||sizes.small;let down=null,up=null,ping=null,jitter=null;try{phase(t('testing'),'Midiendo latencia HTTP aproximada…');const lat=await measureHttpLatency();if(abort.signal.aborted)throw new DOMException('Cancelado','AbortError');if(lat.length){ping=average(lat);jitter=lat.length>1?average(lat.slice(1).map((n,i)=>Math.abs(n-lat[i]))):null;$('pingVal').textContent=fmt(ping,0)+' ms';$('jitterVal').textContent=jitter==null?'—':fmt(jitter,0)+' ms'}phase('DOWNLOAD','Midiendo descarga…');down=await testDownload(bytes,abort.signal);$('downloadVal').textContent=fmt(down)+' Mbps';setSpeed(down);phase('UPLOAD','Midiendo subida…');up=await testUpload(bytes,abort.signal);$('uploadVal').textContent=fmt(up)+' Mbps';setSpeed(up);const result={id:crypto.randomUUID?.()||String(Date.now()),time:new Date().toISOString(),down,up,ping,jitter,connection:$('connectionType').value,asn:state.network.asn||null,provider:state.network.org||null,method:'HTTP Cloudflare single-run'};saveResult(result);phase(t('finished'),'Prueba finalizada. Los valores son estimaciones HTTP, no una medición certificada.')}catch(e){phase(e.name==='AbortError'?t('stop'):t('error'),e.name==='AbortError'?'Prueba detenida.':`No se pudo completar: ${e.message}. Verificá la conexión y el acceso a Cloudflare.`)}finally{state.activeTest=false;state.abort=null;$('startTest').disabled=false;$('stopTest').disabled=true}};
+$('connectionType').value=storage.get('ns3-connection','unknown');$('connectionType').onchange=e=>storage.set('ns3-connection',e.target.value);
+applySettings();updateOnline();networkInfo();loadOperators();renderHistory();if('serviceWorker'in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('/sw.js').catch(()=>{}));
